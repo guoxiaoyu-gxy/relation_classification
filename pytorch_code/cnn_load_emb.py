@@ -19,7 +19,7 @@ nb_epoch = 100
 
 filter_length = 3
 embedding_dims = 300
-position_dims = 50
+position_dims = 35
 log_interval = 10
 learning_rate = 0.0001
 
