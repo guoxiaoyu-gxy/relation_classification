@@ -14,12 +14,14 @@ if (sys.version_info > (3, 0)):
 else: #Python 2.7 imports
     import cPickle as pkl
 
-outputFilePath = 'pkl/sem-relations.pkl.gz'
+import networkx as nx
+import spacy
+nlp = spacy.load('en')
 
+outputFilePath = 'pkl/sem-relations.pkl.gz'
 
 #We download English word embeddings from here https://www.cs.york.ac.uk/nlp/extvec/
 embeddingsPath = 'embeddings/wiki_extvec.gz'
-
 
 folder = 'files/'
 files = [folder+'train.txt', folder+'test.txt']
@@ -36,12 +38,8 @@ labelsMapping = {'Other':0,
                  'Member-Collection(e1,e2)':15, 'Member-Collection(e2,e1)':16,
                  'Content-Container(e1,e2)':17, 'Content-Container(e2,e1)':18}
 
-
-
-
 words = {}
 maxSentenceLen = [0,0]
-
 
 distanceMapping = {'PADDING': 0, 'LowerMin': 1, 'GreaterMax': 2}
 minDistance = -30
@@ -49,6 +47,23 @@ maxDistance = 30
 for dis in range(minDistance,maxDistance+1):
     distanceMapping[dis] = len(distanceMapping)
 
+def shortestDependencyPath(pos1, pos2, sentence):
+    document = nlp(unicode(sentence))
+    edges = []
+    sdp = None
+    for token in document:
+        for child in token.children:
+            edges.append(('{0}'.format(token.i),'{0}'.format(child.i)))
+    graph = nx.Graph(edges)
+    try:
+        sdp = nx.shortest_path(graph, source=str(pos1), target=str(pos2))
+    except e:
+        print(sentence)
+    finally:
+        if sdp is None:
+            return []
+        else:
+            return map(int, sdp)
 
 
 def createMatrices(file, word2Idx, maxSentenceLen=100):
@@ -60,6 +75,7 @@ def createMatrices(file, word2Idx, maxSentenceLen=100):
     tokenMatrix = []
 
     positionIndex = []
+    sdpMatrix = []
     
     for line in open(file):
         splits = line.strip().split('\t')
@@ -79,6 +95,9 @@ def createMatrices(file, word2Idx, maxSentenceLen=100):
         positionIndex1[int(pos1)] = 1
         positionIndex2[int(pos2)] = 1
         positionIndex.append(np.concatenate((positionIndex1, positionIndex2), axis=0))
+
+        sdpWeight = np.zeros(maxSentenceLen, dtype=np.float32)
+        sdp = shortestDependencyPath(pos1, pos2, sentence)
         
         for idx in range(0, min(maxSentenceLen, len(tokens))):
             tokenIds[idx] = getWordIdx(tokens[idx], word2Idx)
@@ -99,20 +118,19 @@ def createMatrices(file, word2Idx, maxSentenceLen=100):
                 positionValues2[idx] = distanceMapping['LowerMin']
             else:
                 positionValues2[idx] = distanceMapping['GreaterMax']
+            sdpWeight[idx] = 0.3
             
+        sdpWeight[sdp] = 0.8
         tokenMatrix.append(tokenIds)
         positionMatrix1.append(positionValues1)
         positionMatrix2.append(positionValues2)
         
         labels.append(labelsMapping[label])
-        
-
+        sdpMatrix.append(sdpWeight)
     
-    return np.array(labels, dtype='int64'), np.array(tokenMatrix, dtype='int64'), np.array(positionMatrix1, dtype='int64'), np.array(positionMatrix2, dtype='int64'), np.array(positionIndex, dtype='float32')
-        
-        
-        
- 
+    return np.array(labels, dtype='int64'), np.array(tokenMatrix, dtype='int64'), np.array(positionMatrix1, dtype='int64'), np.array(positionMatrix2, dtype='int64'), np.array(positionIndex, dtype='float32'), np.array(sdpMatrix, dtype='float32')
+
+
 def getWordIdx(token, word2Idx): 
     """Returns from the word2Idex table the word index for a given token"""       
     if token in word2Idx:
@@ -122,15 +140,12 @@ def getWordIdx(token, word2Idx):
     
     return word2Idx["UNKNOWN_TOKEN"]
 
-
-
 for fileIdx in range(len(files)):
     file = files[fileIdx]
     for line in open(file):
         splits = line.strip().split('\t')
         
         label = splits[0]
-        
         
         sentence = splits[3]        
         tokens = sentence.split(" ")
@@ -178,19 +193,15 @@ for line in fEmbeddings:
         vector = np.array([float(num) for num in split[1:]])
         wordEmbeddings.append(vector)
         word2Idx[word] = len(word2Idx)
-       
-        
+
 wordEmbeddings = np.array(wordEmbeddings)
 
 print("Embeddings shape: ", wordEmbeddings.shape)
 print("Len words: ", len(words))
 
-
-
 # :: Create token matrix ::
 train_set = createMatrices(files[0], word2Idx, max(maxSentenceLen))
 test_set = createMatrices(files[1], word2Idx, max(maxSentenceLen))
-
 
 data = {'wordEmbeddings': wordEmbeddings, 'word2Idx': word2Idx, 
         'train_set': train_set, 'test_set': test_set}
@@ -199,9 +210,4 @@ f = gzip.open(outputFilePath, 'wb')
 pkl.dump(data, f)
 f.close()
 
-
-
-print("Data stored in pkl folder")
-
-        
-        
+print("Data stored in pkl folder")        
