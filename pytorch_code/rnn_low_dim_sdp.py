@@ -12,25 +12,26 @@ else: #Python 2.7 imports
 
 
 batch_size = 64
-test_batch_size = 2717
+test_batch_size = 64
 
 nb_filter = 200
 nb_epoch = 100
 
 filter_length = 3
 embedding_dims = 50
+hidden_dims = 50
 position_dims = 5
 log_interval = 10
-learning_rate = 0.001
+learning_rate = 0.0001
 
 print("Load dataset")
-f = gzip.open('pkl/sem-relations-low-dim.pkl.gz', 'rb')
+f = gzip.open('pkl/sem-relations-rnn-low-dim.pkl.gz', 'rb')
 data = pkl.load(f)
 f.close()
 
 embeddings = data['wordEmbeddings']
 yTrain, sentenceTrain, positionTrain1, positionTrain2, positionIndexTrain, sdpWeightTrain = data['train_set']
-yTest, sentenceTest, positionTest1, positionTest2, positionIndexTest, sdpWeightTest  = data['test_set']
+yTest, sentenceTest, positionTest1, positionTest2, positionIndexTest, sdpWeightTrain  = data['test_set']
 
 max_position = max(np.max(positionTrain1), np.max(positionTrain2))+1
 
@@ -63,44 +64,31 @@ class CnnOneAttNet(nn.Module):
         super(CnnOneAttNet, self).__init__()
         self.emb1 = nn.Embedding(embeddings.shape[0], embeddings.shape[1])
         self.emb1.weight.data.copy_(torch.from_numpy(embeddings))
-        self.emb2 = nn.Embedding(max_position, position_dims)
+        #self.emb2 = nn.Embedding(max_position, position_dims)
         #self.emb3 = nn.Embedding(max_position, position_dims)
-        self.conv = nn.Conv1d(embedding_dims+2*position_dims, nb_filter, kernel_size=filter_length, padding=1)
-        self.drop = nn.Dropout(0.25)
-        self.fc1 = nn.Linear(nb_filter, nb_filter/2)
-        self.fc2 = nn.Linear(nb_filter/2+embedding_dims*2, n_out)
-        self.softmax = nn.Softmax()
+        #self.conv = nn.Conv1d(embedding_dims+2*position_dims, nb_filter, kernel_size=filter_length, padding=1)
+        #self.drop = nn.Dropout(0)
+        #self.fc = nn.Linear(nb_filter, n_out)
+        #self.softmax = nn.Softmax()
+        self.lstm = nn.LSTM(embedding_dims, hidden_dims, max_sentence_len, batch_first=True, bidirectional=True)
+        self.h0 = Variable(torch.randn(2*max_sentence_len, batch_size, hidden_dims))
+        self.c0 = Variable(torch.randn(2*max_sentence_len, batch_size, hidden_dims))
+        self.conv = nn.Conv1d(hidden_dims, nb_filter, kernel_size=filter_length, padding=1)
+        self.drop = nn.Dropout(0.5)
+        self.fc = nn.Linear(nb_filter, n_out)
         
-    def forward(self, words, pos1, pos2, posIndex):
+        
+    def forward(self, words, pos1, pos2):
         embed1 = self.emb1(words)
-        embed2 = self.emb2(pos1)
-        embed3 = self.emb2(pos2)
-        x = torch.cat([embed1, embed2, embed3], 2).permute(0, 2, 1)
-        x = torch.max(F.relu(self.conv(x)), 2)[0]
-        lex = get_lex(embed1, posIndex)
-        x = self.fc1(self.drop(x))
-        x = self.fc2(self.drop(torch.cat((lex, x), 1)))
+        #embed2 = self.emb2(pos1)
+        #embed3 = self.emb2(pos2)
+        #x = torch.cat([embed1, embed2, embed3], 2).permute(0, 2, 1)
+        output, (hn, cn) = self.lstm(embed1, (self.h0, self.c0))
+        x = torch.max(F.relu(self.conv(hn.permute(1, 2, 0))), 2)[0]
+        x = self.fc(self.drop(x))
         #x = self.softmax(x)
         return x
 
-def get_lex(inputs, posIndex):
-    words = inputs.permute(0, 2, 1)
-    m = max_sentence_len
-    w = words.shape[0]
-    index_vec1 = posIndex[:,0*m:1*m].contiguous().view(w, 1, -1)
-    index_vec2 = posIndex[:,1*m:2*m].contiguous().view(w, 1, -1)
-    #index_vec3 = posIndex[:,2*m:3*m].contiguous().view(w, 1, -1)
-    #index_vec4 = posIndex[:,3*m:4*m].contiguous().view(w, 1, -1)
-    #index_vec5 = posIndex[:,4*m:5*m].contiguous().view(w, 1, -1)
-    #index_vec6 = posIndex[:,5*m:6*m].contiguous().view(w, 1, -1)
-    noun1 = torch.bmm(index_vec1, inputs)
-    noun2 = torch.bmm(index_vec2, inputs)
-    #noun3 = torch.bmm(index_vec3, inputs)
-    #noun4 = torch.bmm(index_vec4, inputs)
-    #noun5 = torch.bmm(index_vec5, inputs)
-    #noun6 = torch.bmm(index_vec6, inputs)
-    noun = torch.cat((noun1, noun2), 2)
-    return torch.squeeze(noun, 1)
 
 model = CnnOneAttNet()
 print(model)
@@ -127,14 +115,11 @@ def train(epoch):
     position1 = generate(positionTrain1, batch_size, indexes)
     position2 = generate(positionTrain2, batch_size, indexes)
     labels = generate(yTrain, batch_size, indexes)
-    positionIndex = generate(positionIndexTrain, batch_size, indexes)
     for i in range(len(sentence)):
-        sentence[i], position1[i], position2[i], labels[i], positionIndex[i] = \
-            Variable(torch.from_numpy(sentence[i])), Variable(torch.from_numpy(position1[i])), \
-            Variable(torch.from_numpy(position2[i])), Variable(torch.from_numpy(labels[i])), \
-            Variable(torch.from_numpy(positionIndex[i]))
+        sentence[i], position1[i], position2[i], labels[i] = Variable(torch.from_numpy(sentence[i])), \
+            Variable(torch.from_numpy(position1[i])), Variable(torch.from_numpy(position2[i])), Variable(torch.from_numpy(labels[i]))
         optimizer.zero_grad()
-        output = model(sentence[i], position1[i], position2[i], positionIndex[i])
+        output = model(sentence[i], position1[i], position2[i])
         loss = F.cross_entropy(output, labels[i])
         loss.backward()
         optimizer.step()
@@ -153,13 +138,10 @@ def test():
     position1 = generate(positionTest1, test_batch_size, test_indexes)
     position2 = generate(positionTest2, test_batch_size, test_indexes)
     labels = generate(yTest, test_batch_size, test_indexes)
-    positionIndex = generate(positionIndexTest, test_batch_size, test_indexes)
     for i in range(len(sentence)):
-        sentence[i], position1[i], position2[i], labels[i], positionIndex[i] = \
-            Variable(torch.from_numpy(sentence[i])), Variable(torch.from_numpy(position1[i])), \
-            Variable(torch.from_numpy(position2[i])), Variable(torch.from_numpy(labels[i])), \
-            Variable(torch.from_numpy(positionIndex[i]))
-        output = model(sentence[i], position1[i], position2[i], positionIndex[i])
+        sentence[i], position1[i], position2[i], labels[i] = Variable(torch.from_numpy(sentence[i])), \
+            Variable(torch.from_numpy(position1[i])), Variable(torch.from_numpy(position2[i])), Variable(torch.from_numpy(labels[i]))
+        output = model(sentence[i], position1[i], position2[i])
         test_loss += F.cross_entropy(output, labels[i]).data[0]
         pred = output.data.max(1, keepdim=True)[1]
         correct += pred.eq(labels[i].data.view_as(pred)).long().cpu().sum()
