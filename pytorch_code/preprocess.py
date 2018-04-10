@@ -121,6 +121,8 @@ def createMatrices(file, word2Idx, maxSentenceLen=100):
             sdpWeight[idx] = 0.3
             
         sdpWeight[sdp] = 0.8
+        sdpWeight[int(pos1)] = 0.3
+        sdpWeight[int(pos2)] = 0.3
         tokenMatrix.append(tokenIds)
         positionMatrix1.append(positionValues1)
         positionMatrix2.append(positionValues2)
