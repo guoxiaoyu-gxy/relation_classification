@@ -25,7 +25,7 @@ log_interval = 10
 learning_rate = 0.001
 
 print("Load dataset")
-f = gzip.open('pkl/sem-relations-rnn-low-dim.pkl.gz', 'rb')
+f = gzip.open('pkl/sem-relations-rnn-med-dim.pkl.gz', 'rb')
 data = pkl.load(f)
 f.close()
 
