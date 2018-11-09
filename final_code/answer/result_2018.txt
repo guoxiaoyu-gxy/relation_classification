@@ -1,0 +1,37 @@
+
+<<< RELATION EXTRACTION EVALUATION >>>
+
+Precision = 355/355 = 100.00%
+Recall = 355/355 = 100.00%
+F1 = 100.00% 
+
+<<< The official score for the extraction scenario is F1 = 100.00% >>>
+
+
+<<< RELATION CLASSIFICATION EVALUATION >>>:
+
+Number of instances in submission: 355
+Number of instances in submission missing from gold standard: 0
+Number of instances in gold standard:  355
+Number of instances in gold standard missing from submission:    0
+
+Coverage (predictions for a correctly extracted instance with correct directionality) = 355/355 = 100.00%
+
+Results for the individual relations:
+                  COMPARE :    P =   16/  24 =  66.67%     R =   16/  21 =  76.19%     F1 =  71.11%
+            MODEL-FEATURE :    P =   39/  72 =  54.17%     R =   39/  66 =  59.09%     F1 =  56.52%
+               PART_WHOLE :    P =   44/  65 =  67.69%     R =   44/  70 =  62.86%     F1 =  65.19%
+                   RESULT :    P =   12/  18 =  66.67%     R =   12/  20 =  60.00%     F1 =  63.16%
+                    TOPIC :    P =    1/   2 =  50.00%     R =    1/   3 =  33.33%     F1 =  40.00%
+                    USAGE :    P =  144/ 174 =  82.76%     R =  144/ 175 =  82.29%     F1 =  82.52%
+
+Micro-averaged result :
+P =  256/ 355 =  72.11%     R =  256/ 355 =  72.11%     F1 =  72.11%
+
+Macro-averaged result :
+P =  64.66%	R =  62.29%	F1 =  63.08%
+
+
+
+<<< The official score for the classification scenario is macro-averaged F1 = 63.08% >>>
+
